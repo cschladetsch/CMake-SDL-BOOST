@@ -7,7 +7,7 @@ This is a skeleton project that uses:
 * SDL2. 2.30
 * C++20
 
-To render a 800x800 window for 5 seconds then quit.
+To solve the three-body-problem.
 
 ## Motivation
 
