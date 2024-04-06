@@ -1,47 +1,112 @@
 #define SDL_MAIN_HANDLED
 
 #include <SDL.h>
-#include <ranges>
-#include <string_view>
-#include <concepts>
-#include <span>
-#include <format>
-#include <chrono>
-#include <thread>
+#include <iostream>
+#include <vector>
+#include <cmath>
 
-int main(int argc, char* argv[]) {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL initialization failed: %s", SDL_GetError());
-        return 1;
+const int SCREEN_WIDTH = 800;
+const int SCREEN_HEIGHT = 800;
+
+struct Body {
+    int number;
+    double x, y; // Position
+    double vx, vy; // Velocity
+    double mass;
+};
+
+std::ostream& operator<<(std::ostream& out, const Body& body) {
+    return out << body.number << ": " << body.x << ", " << body.y << std::endl;
+}
+
+typedef std::vector<Body> State;
+
+const double G = 2;
+
+void calculateForces(const State &state, std::vector<double> &fx, std::vector<double> &fy) {
+    size_t n = state.size();
+    fx.assign(n, 0.0);
+    fy.assign(n, 0.0);
+
+    for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            if (i != j) {
+                double dx = state[j].x - state[i].x;
+                double dy = state[j].y - state[i].y;
+                double r = sqrt(dx * dx + dy * dy);
+                double force = G * state[i].mass * state[j].mass / (r * r);
+                fx[i] += force * dx / r;
+                fy[i] += force * dy / r;
+            }
+        }
     }
+}
 
-    SDL_Window* window = SDL_CreateWindow("SDL Window", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 800, SDL_WINDOW_SHOWN);
-    if (window == nullptr) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Window creation failed: %s", SDL_GetError());
-        SDL_Quit();
-        return 1;
+template <class T>
+T clamp(T low, T high, T value) {
+    if (value <= low) return value = high;
+    return value >= high ? low : value;
+}
+
+void updateState(State &state, double dt) {
+    std::vector<double> fx, fy;
+    calculateForces(state, fx, fy);
+
+    for (size_t i = 0; i < state.size(); ++i) {
+        double ax = fx[i] / state[i].mass;
+        double ay = fy[i] / state[i].mass;
+        state[i].vx += ax * dt;
+        state[i].vy += ay * dt;
+        state[i].x += state[i].vx * dt;
+        state[i].y += state[i].vy * dt;
+
+        state[i].x = clamp(0.0, 800.0, state[i].x);
+        state[i].y = clamp(0.0, 800.0, state[i].y);
     }
+}
 
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (renderer == nullptr) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Renderer creation failed: %s", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-
+void draw(SDL_Renderer *renderer, const State &state) {
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-
     SDL_RenderClear(renderer);
-
+    for (const auto &body : state) {
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+        SDL_Rect rect = {static_cast<int>(body.x), static_cast<int>(body.y), 5*body.mass/100, 5*body.mass/100};
+        SDL_RenderFillRect(renderer, &rect);
+    }
     SDL_RenderPresent(renderer);
+}
 
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+void drawState(std::vector<Body> const& bodies) {
+    for (auto const& body : bodies) {
+        std::cout << body << std::endl;
+    }
+}
+
+int main() {
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    SDL_CreateWindowAndRenderer(SCREEN_WIDTH, SCREEN_HEIGHT, 0, &window, &renderer);
+    SDL_SetWindowTitle(window, "Three-Body Problem");
+
+    State state = {
+        {0, 200, 200, 0, 0, 320},  // Body 1
+        {1, 400, 200, -0.5, 0.3, 120}, // Body 2
+        {2, 600, 200, 0.5, 00.2, 80}   // Body 3
+    };
+
+    const double dt = 0.01; // Time step
+
+    while (true) {
+        draw(renderer, state);
+        updateState(state, dt);
+        SDL_Event event;
+        if (SDL_PollEvent(&event) && event.type == SDL_QUIT)
+            break;
+    }
 
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-
     return 0;
 }
-
